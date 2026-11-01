@@ -189,7 +189,7 @@ footer button{background:none;border:0;color:var(--dim);cursor:pointer;font:inhe
     </section>
   </div>
 
-  <div class="row2">
+  <div class="row2" hidden><!-- retired Dip-Buy panels -->
     <section class="panel">
       <div class="ph"><h2>Account equity vs SPY</h2><div class="legend" style="margin-left:auto"><span><i style="background:var(--up)"></i>NORAX</span><span><i style="background:var(--spy)"></i>SPY, same start</span></div></div>
       <div id="eq"></div>
@@ -204,6 +204,17 @@ footer button{background:none;border:0;color:var(--dim);cursor:pointer;font:inhe
   </div>
 
 
+
+  <section class="panel" style="margin-bottom:12px">
+    <div class="ph"><h2>COMBO 1 bot · 6 sleeves: dip-buys, sector breakout, SPY & Faber trend</h2><span class="badge paper" style="margin-left:6px">PAPER · account #1</span><span class="muted" id="c1Meta" style="font-size:12px;margin-left:auto"></span></div>
+    <div class="pb">
+      <div class="kpis" id="c1K" style="margin-bottom:10px"></div>
+      <div class="row2" style="margin-bottom:0">
+        <div><div id="c1Chart" style="height:220px"></div><div class="empty" id="c1Empty" hidden>Starts after its first trading day.</div></div>
+        <div class="scroll"><table class="t"><thead><tr><th>Day</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Status</th><th>Fill</th></tr></thead><tbody id="c1Ord"></tbody></table></div>
+      </div>
+    </div>
+  </section>
 
   <section class="panel" style="margin-bottom:12px">
     <div class="ph"><h2>COMBO 2 bot · SPY trend + dip-buy overlay</h2><span class="badge paper" style="margin-left:6px">PAPER · 2nd account</span><span class="muted" id="c2Meta" style="font-size:12px;margin-left:auto"></span></div>
@@ -286,11 +297,9 @@ function tickClock(){
 
 // ---------- schedule countdowns ----------
 const JOBS = [
-  {job:'dipbuy_signal', name:'Signal', at:[16,35], what:'Reads the close, picks buys & sells'},
-  {job:'dipbuy_submit', name:'Submit', at:[19,10], what:'Sends orders for the next open'},
-  {job:'dipbuy_backup', name:'Backup', at:[8,35],  what:'Resends anything missed'},
   {job:'market_snapshot', name:'Charts', at:[16,35], what:'Refreshes candles & watchlist'},
-  {job:'combo2_close', name:'COMBO 2', at:[15,20], what:'Decides before the close, market-on-close orders'},
+  {job:'combo1_close', name:'COMBO 1', at:[15,20], what:'6 sleeves, market-on-close orders (acct #1)'},
+  {job:'combo2_close', name:'COMBO 2', at:[15,20], what:'Trend + dip overlay, market-on-close (acct #2)'},
   {job:'data_sync', name:'Data sync', at:[16,35], what:'Stores the newest prices in our base'},
   {job:'data_refresh', name:'Data refresh', at:[6,15], days:[6], what:'Reloads all history since 2016 (Sat)'},
   {job:'backtest_all', name:'Strategy lab', at:[6,15], days:[6], what:'Re-tests every strategy (Sat)'},
@@ -447,33 +456,41 @@ function drawLab(){
 }
 
 
-// ---------- COMBO 2 bot ----------
-let c2Chart, c2A, c2B;
-function renderCombo2(rows, ords){
+// ---------- COMBO bots ----------
+const BOTCH = {};
+function renderBotPanel(p, label, rows, ords){
   const last = rows.at(-1), first = rows[0], d = last?.detail || {};
   const k = (l,v,s='',c='') => `<div class="panel kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`;
   const ret = last && first ? (N(last.equity)/N(first.equity)-1)*100 : null;
   const spy = last && first && first.spy_close ? (N(last.spy_close)/N(first.spy_close)-1)*100 : null;
-  $('#c2K').innerHTML = k('Equity', money(N(last?.equity)), last ? 'as of ' + esc(last.as_of) : 'waiting for keys / first run') +
+  let k4, k5, k6;
+  if(p === 'c2'){
+    k4 = k('Trend core', d.core == null ? '–' : (d.core ? 'ON' : 'OFF'), d.sma200 ? `SPY ${d.close} vs 200d ${d.sma200}` : '', d.core ? 'up' : '');
+    k5 = k('Dip-buys active', d.dips_active == null ? '–' : d.dips_active + '/3', d.williams_r != null ? 'Williams %R ' + d.williams_r : '');
+    k6 = k('SPY exposure', d.spy_weight == null ? '–' : Math.round(d.spy_weight*100) + '%', (d.events||[]).join(', ') || 'no change');
+  } else {
+    const dips = d.dips ? Object.values(d.dips).filter(Boolean).length : null;
+    k4 = k('SPY trend', d.spy_trend == null ? '–' : (d.spy_trend ? 'ON' : 'OFF'), d.sma200 ? `SPY ${d.close} vs 200d ${d.sma200}` : '', d.spy_trend ? 'up' : '');
+    k5 = k('Dip-buys / breakouts', dips == null ? '–' : `${dips}/3 · ${(d.breakouts||[]).length}/9`, (d.breakouts||[]).join(' ') || 'no sector breakouts');
+    k6 = k('Invested', d.invested == null ? '–' : Math.round(d.invested*100) + '%', 'Faber: ' + ((d.faber||[]).join(' ') || '–'));
+  }
+  $('#'+p+'K').innerHTML = k('Equity', money(N(last?.equity)), last ? 'as of ' + esc(last.as_of) : 'waiting for first run') +
     k('Since start', sgn(ret), first ? 'since ' + esc(first.as_of) : '', cls(ret)) +
-    k('SPY same period', sgn(spy), ret!=null && spy!=null ? (ret>=spy?'COMBO 2 ahead':'COMBO 2 behind') : '', cls(spy)) +
-    k('Trend core', d.core == null ? '–' : (d.core ? 'ON' : 'OFF'), d.sma200 ? `SPY ${d.close} vs 200d ${d.sma200}` : '', d.core ? 'up' : '') +
-    k('Dip-buys active', d.dips_active == null ? '–' : d.dips_active + '/3', d.williams_r != null ? 'Williams %R ' + d.williams_r : '') +
-    k('SPY exposure', d.spy_weight == null ? '–' : Math.round(d.spy_weight*100) + '%', (d.events||[]).join(', ') || 'no change');
-  const lr = LATEST['combo2_close'] || LATEST['combo2_fallback'];
-  $('#c2Meta').textContent = lr ? 'last run ' + when(lr.started_at) + ' · ' + lr.status : '';
-  $('#c2Ord').innerHTML = ords.length ? ords.slice(0,30).map(o => `<tr><td>${esc(o.signal_date)}</td><td><b>${esc(o.symbol)}</b></td><td class="${o.side==='buy'?'up':'down'}">${esc(o.side).toUpperCase()}</td><td>${N(o.qty)}</td><td>${esc(o.status)}</td><td>${px(o.fill_price)}</td></tr>`).join('')
+    k('SPY same period', sgn(spy), ret!=null && spy!=null ? (ret>=spy?label+' ahead':label+' behind') : '', cls(spy)) + k4 + k5 + k6;
+  const lr = LATEST[(p==='c2'?'combo2':'combo1')+'_close'] || LATEST[(p==='c2'?'combo2':'combo1')+'_fallback'];
+  $('#'+p+'Meta').textContent = lr ? 'last run ' + when(lr.started_at) + ' · ' + lr.status : '';
+  $('#'+p+'Ord').innerHTML = ords.length ? ords.slice(0,30).map(o => `<tr><td>${esc(o.signal_date)}</td><td><b>${esc(o.symbol)}</b></td><td class="${o.side==='buy'?'up':'down'}">${esc(o.side).toUpperCase()}</td><td>${N(o.qty)}</td><td>${esc(o.status)}</td><td>${px(o.fill_price)}</td></tr>`).join('')
     : '<tr><td colspan="6" class="empty">No orders yet.</td></tr>';
   const has = rows.length >= 1 && typeof LightweightCharts !== 'undefined';
-  $('#c2Empty').hidden = has; $('#c2Chart').style.display = has ? '' : 'none';
+  $('#'+p+'Empty').hidden = has; $('#'+p+'Chart').style.display = has ? '' : 'none';
   if(!has) return;
-  if(!c2Chart){ c2Chart = LightweightCharts.createChart($('#c2Chart'), base());
-    c2A = c2Chart.addAreaSeries({lineColor:'#8b7bff',topColor:'#8b7bff44',bottomColor:'#8b7bff00',lineWidth:2});
-    c2B = c2Chart.addLineSeries({color:'#6b7a90',lineWidth:2,priceLineVisible:false}); }
-  const e0 = N(first.equity), s0 = N(first.spy_close);
-  c2A.setData(rows.map(r => ({time:r.as_of, value:N(r.equity)})));
-  c2B.setData(s0 ? rows.map(r => ({time:r.as_of, value:e0*N(r.spy_close)/s0})) : []);
-  c2Chart.timeScale().fitContent();
+  if(!BOTCH[p]){ const ch = LightweightCharts.createChart($('#'+p+'Chart'), base());
+    BOTCH[p] = {ch, a: ch.addAreaSeries({lineColor:'#8b7bff',topColor:'#8b7bff44',bottomColor:'#8b7bff00',lineWidth:2}),
+                b: ch.addLineSeries({color:'#6b7a90',lineWidth:2,priceLineVisible:false})}; }
+  const e0 = N(first.equity), s0 = N(first.spy_close), B = BOTCH[p];
+  B.a.setData(rows.map(r => ({time:r.as_of, value:N(r.equity)})));
+  B.b.setData(s0 ? rows.map(r => ({time:r.as_of, value:e0*N(r.spy_close)/s0})) : []);
+  B.ch.timeScale().fitContent();
 }
 
 // ---------- main load ----------
@@ -492,7 +509,7 @@ async function load(){
     const cv = await q('v_backtest_curves');
     CURVES = Object.fromEntries(cv.map(x => [x.strategy, x.curve]));
     if(!LABSEL.length){
-      LABSEL = ['Dip-Buy (live rules)', 'SPY buy & hold'].filter(v => CURVES[v]);
+      LABSEL = ['COMBO 2: SPY trend core + dip-buy overlay (max 2x)', 'COMBO 1: dip-buys + trends, equal split', 'SPY buy & hold'].filter(v => CURVES[v]);
     }
     const r0 = lab.find(x => x.metrics);
     $('#labMeta').textContent = r0 ? `last run ${when(r0.ran_at)} · data: ${r0.feed} · costs ${N(r0.cost_bps)} bp per trade` : '';
@@ -528,7 +545,8 @@ async function load(){
   $('#dwMeta').textContent = lastRun ? 'last update ' + when(lastRun.finished_at || lastRun.started_at) : '';
   const newest = dw.reduce((m,r) => r.last_day > m ? r.last_day : m, '');
   $('#dw').innerHTML = dw.map(r => `<tr><td><b>${esc(r.symbol)}</b></td><td>${N(r.days).toLocaleString('en-US')}</td><td>${esc(r.first_day)}</td><td class="${r.last_day < newest ? 'down' : ''}">${esc(r.last_day)}</td></tr>`).join('');
-  renderCombo2(beq.filter(r => r.strategy === 'combo2'), bord.filter(r => r.strategy === 'combo2'));
+  renderBotPanel('c1', 'COMBO 1', beq.filter(r => r.strategy === 'combo1'), bord.filter(r => r.strategy === 'combo1'));
+  renderBotPanel('c2', 'COMBO 2', beq.filter(r => r.strategy === 'combo2'), bord.filter(r => r.strategy === 'combo2'));
   makeCharts(); renderWL(); await loadSymbol(SYM);
   if(labChanged || !LAB.length) renderLab();
 
