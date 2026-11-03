@@ -593,8 +593,8 @@ function start(){
   load().catch(e => { $('#app').hidden = true; $('#setup').hidden = false; $('#setupMsg').textContent = 'Could not load: ' + (e.message || e) + '. Check the URL and key.'; });
 }
 $('#connect').addEventListener('click', () => {
-  const u = $('#url').value.trim(), k = $('#key').value.trim();
-  if(!u || !k){ $('#setupMsg').textContent = 'Paste both the Project URL and the key.'; return; }
+  const u = $('#url').value.trim() || DEFAULT_URL, k = $('#key').value.trim();
+  if(!k){ $('#setupMsg').textContent = 'Paste your Publishable key (starts with sb_publishable_).'; return; }
   store.set('norax_url', u); store.set('norax_key', k); start();
 });
 $('#reset').addEventListener('click', () => { store.del('norax_url'); store.del('norax_key'); location.hash = ''; location.reload(); });
