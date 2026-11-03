@@ -261,7 +261,7 @@ footer button{background:none;border:0;color:var(--dim);cursor:pointer;font:inhe
     <div class="pb"><div class="apps" id="apps"></div><div id="runs"></div></div>
   </section>
 
-  <footer><span id="updated"></span><button id="reset">Change database</button></footer>
+  <footer><span id="updated"></span><span><button id="autolink">Copy my auto-login link</button> · <button id="reset">Change database</button></span></footer>
 </main>
 
 <script>
@@ -576,8 +576,16 @@ async function load(){
   renderBot();
 }
 
+const DEFAULT_URL = 'https://erjsrkvrffgskkvhuwyr.supabase.co';   // project address (not a secret)
+function fromLink(){
+  // auto-login link: ...#key=sb_publishable_xxx  (the part after # never leaves your browser)
+  const m = location.hash.match(/key=([^&]+)/);
+  if(m){ store.set('norax_url', DEFAULT_URL); store.set('norax_key', decodeURIComponent(m[1])); }
+}
 function start(){
-  const url = store.get('norax_url'), key = store.get('norax_key');
+  fromLink();
+  const url = store.get('norax_url') || DEFAULT_URL, key = store.get('norax_key');
+  if(!$('#url').value) $('#url').value = DEFAULT_URL;
   if(!url || !key){ $('#setup').hidden = false; $('#app').hidden = true; return; }
   if(typeof supabase === 'undefined'){ $('#setup').hidden = false; $('#setupMsg').textContent = 'Could not load the database library. Check your internet connection.'; return; }
   db = supabase.createClient(url, key);
@@ -589,7 +597,12 @@ $('#connect').addEventListener('click', () => {
   if(!u || !k){ $('#setupMsg').textContent = 'Paste both the Project URL and the key.'; return; }
   store.set('norax_url', u); store.set('norax_key', k); start();
 });
-$('#reset').addEventListener('click', () => { store.del('norax_url'); store.del('norax_key'); location.reload(); });
+$('#reset').addEventListener('click', () => { store.del('norax_url'); store.del('norax_key'); location.hash = ''; location.reload(); });
+$('#autolink').addEventListener('click', async () => {
+  const link = location.origin + location.pathname + '#key=' + encodeURIComponent(store.get('norax_key') || '');
+  try { await navigator.clipboard.writeText(link); $('#autolink').textContent = 'Copied! Bookmark it / open it on your phone'; }
+  catch { prompt('Your auto-login link (bookmark it):', link); }
+});
 $('#refresh').addEventListener('click', () => load().catch(()=>{}));
 $('#wl').addEventListener('click', e => { const tr = e.target.closest('tr[data-s]'); if(tr) loadSymbol(tr.dataset.s); });
 $('#filters').addEventListener('click', e => { const b = e.target.closest('button'); if(!b) return; FILTER = b.dataset.f;
