@@ -217,6 +217,15 @@ footer button{background:none;border:0;color:var(--dim);cursor:pointer;font:inhe
   </section>
 
   <section class="panel" style="margin-bottom:12px">
+    <div class="ph"><h2>Prop challenge rehearsal · $50K Topstep-style · Nasdaq 5-min breakout</h2><span class="badge paper" style="margin-left:6px">PRETEND · NO ORDERS</span><span class="muted" id="prMeta" style="font-size:12px;margin-left:auto"></span></div>
+    <div class="pb">
+      <div class="kpis" id="prK" style="margin-bottom:10px"></div>
+      <div class="scroll"><table class="t"><thead><tr><th>Day</th><th>Attempt</th><th>Trade</th><th>P&amp;L</th><th>Balance</th><th>Fail line</th><th>Status</th></tr></thead><tbody id="prRows"></tbody></table>
+      <div class="empty" id="prEmpty" hidden>Starts after the next trading day's close. Pass = reach $53,000 without touching the fail line.</div></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-bottom:12px">
     <div class="ph"><h2>COMBO 2 bot · SPY trend + dip-buy overlay</h2><span class="badge paper" style="margin-left:6px">PAPER · 2nd account</span><span class="muted" id="c2Meta" style="font-size:12px;margin-left:auto"></span></div>
     <div class="pb">
       <div class="kpis" id="c2K" style="margin-bottom:10px"></div>
@@ -499,10 +508,27 @@ async function q(view, f = x => x){
   if(r.error){ if(/does not exist|schema cache|not find/i.test(r.error.message)) return []; throw r.error; }
   return r.data || [];
 }
+function renderProp(rows){
+  const money = v => '$' + Math.round(N(v)).toLocaleString('en-US');
+  $('#prEmpty').hidden = rows.length > 0;
+  const last = rows[rows.length-1];
+  const done = rows.filter(r => r.status !== 'running');
+  const passed = done.filter(r => r.status === 'PASSED').length;
+  $('#prK').innerHTML = last ? [
+    ['Attempt', last.status === 'running' ? last.attempt : (+last.attempt + 1), last.status === 'running' ? 'in progress' : 'starts next day'],
+    ['Balance', last.status === 'running' ? money(last.balance) : '$50,000', 'target $53,000'],
+    ['Fail line', last.status === 'running' ? money(last.floor) : '$48,000', 'trails $2,000 below the peak'],
+    ['Record', passed + ' passed / ' + (done.length - passed) + ' failed', 'finished attempts']
+  ].map(([l,v,x]) => `<div class="panel kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${x}</div></div>`).join('') : '';
+  $('#prRows').innerHTML = rows.slice().reverse().map(r => `<tr><td>${esc(r.day)}</td><td>${r.attempt}</td><td>${esc((r.detail||{}).side||'')}</td>
+    <td class="${N(r.pnl) >= 0 ? 'up' : 'down'}">${N(r.pnl) >= 0 ? '+' : ''}${money(r.pnl)}</td><td>${money(r.balance)}</td><td>${money(r.floor)}</td>
+    <td class="${r.status === 'PASSED' ? 'up' : r.status === 'running' ? '' : 'down'}"><b>${esc(r.status)}</b></td></tr>`).join('');
+  $('#prMeta').textContent = last ? 'updated ' + esc(last.day) : '';
+}
 async function load(){
-  const [apps, runs, latest, eq, pos, ord, wl, acct, lab, dws, dw, beq, bord] = await Promise.all([
+  const [apps, runs, latest, eq, pos, ord, wl, acct, lab, dws, dw, beq, bord, prd] = await Promise.all([
     q('v_apps'), q('v_runs', x => x.limit(30)), q('v_latest_runs'), q('v_equity'), q('v_positions'),
-    q('v_recent_orders', x => x.limit(40)), q('v_watchlist'), q('v_account'), q('v_backtests'), q('v_data_summary'), q('v_data_status'), q('v_bot_equity'), q('v_bot_orders')]);
+    q('v_recent_orders', x => x.limit(40)), q('v_watchlist'), q('v_account'), q('v_backtests'), q('v_data_summary'), q('v_data_status'), q('v_bot_equity'), q('v_bot_orders'), q('v_prop_days')]);
   const labChanged = JSON.stringify(lab.map(x => x.ran_at)) !== JSON.stringify(LAB.map(x => x.ran_at));
   LAB = lab;
   if(labChanged && lab.length){
@@ -547,6 +573,7 @@ async function load(){
   $('#dw').innerHTML = dw.map(r => `<tr><td><b>${esc(r.symbol)}</b></td><td>${N(r.days).toLocaleString('en-US')}</td><td>${esc(r.first_day)}</td><td class="${r.last_day < newest ? 'down' : ''}">${esc(r.last_day)}</td></tr>`).join('');
   renderBotPanel('c1', 'COMBO 1', beq.filter(r => r.strategy === 'combo1'), bord.filter(r => r.strategy === 'combo1'));
   renderBotPanel('c2', 'COMBO 2', beq.filter(r => r.strategy === 'combo2'), bord.filter(r => r.strategy === 'combo2'));
+  renderProp(prd);
   makeCharts(); renderWL(); await loadSymbol(SYM);
   if(labChanged || !LAB.length) renderLab();
 
